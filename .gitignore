@@ -1,0 +1,34 @@
+# Python
+.venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+build/
+dist/
+*.egg-info/
+
+# Local speech assets and builds
+vendor/
+models/
+*.onnx
+*.gguf
+*.bin
+*.wav
+*.webm
+
+# Runtime and secrets
+.env
+.env.*
+!.env.example
+*.log
+*.sqlite3
+*.pem
+*.key
+*.crt
+
+# Editors and OS
+.vscode/
+.idea/
+.DS_Store

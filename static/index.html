@@ -1,0 +1,55 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <meta name="theme-color" content="#050608">
+  <meta name="description" content="Private Access-protected voice interface for Tars">
+  <link rel="manifest" href="/manifest.webmanifest">
+  <link rel="icon" href="/icon-192.png">
+  <link rel="stylesheet" href="/app.css">
+  <title>Tars Voice</title>
+</head>
+<body>
+  <main class="voice-shell">
+    <header class="topbar">
+      <div class="brand"><span class="brand-mark">T</span><span>Tars</span></div>
+      <div class="connection"><span id="connection-dot"></span><span id="connection-label">Connecting</span></div>
+    </header>
+
+    <section class="voice-stage" aria-label="Voice conversation">
+      <div id="orb" class="orb" data-mode="idle" aria-hidden="true">
+        <div class="orb-halo"></div>
+        <div class="orb-ring ring-one"></div>
+        <div class="orb-ring ring-two"></div>
+        <div class="orb-core"></div>
+      </div>
+
+      <div class="voice-state" aria-live="polite">
+        <h1 id="status">Connecting…</h1>
+        <p id="hint">Preparing your private voice session</p>
+      </div>
+
+      <button id="start" class="primary-action" type="button" disabled>
+        <span class="action-icon">◉</span>
+        <span>Start conversation</span>
+      </button>
+      <button id="stop" class="secondary-action hidden" type="button">End conversation</button>
+    </section>
+
+    <section id="captions" class="captions" aria-live="polite">
+      <div class="caption-block user-caption">
+        <span>You</span>
+        <p id="transcript">Start speaking whenever you’re ready.</p>
+      </div>
+      <div class="caption-block assistant-caption">
+        <span>Tars</span>
+        <p id="answer">I’ll respond here and out loud.</p>
+      </div>
+    </section>
+
+    <footer>Private · local speech processing</footer>
+  </main>
+  <script src="/app.js" defer></script>
+</body>
+</html>

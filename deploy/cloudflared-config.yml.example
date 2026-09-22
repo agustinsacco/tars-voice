@@ -1,0 +1,6 @@
+# Merge this ingress rule into an existing cloudflared configuration.
+# Keep the catch-all rule last.
+ingress:
+  - hostname: voice.example.com
+    service: http://127.0.0.1:8788
+  - service: http_status:404

@@ -1,0 +1,21 @@
+[Unit]
+Description=Tars Voice persistent Whisper STT worker
+After=network.target
+
+[Service]
+Type=simple
+WorkingDirectory=%h/.local/share/tars-voice
+Environment=LD_LIBRARY_PATH=%h/.local/share/tars-voice/vendor/whisper.cpp/build-vulkan/bin
+ExecStart=/usr/bin/env %h/.local/share/tars-voice/vendor/whisper.cpp/build-vulkan/bin/whisper-server -m %h/.local/share/tars-voice/models/ggml-large-v3-turbo.bin --host 127.0.0.1 --port 8790 --convert --tmp-dir %t/tars-voice-whisper -l en -nt -sns
+Restart=on-failure
+RestartSec=3
+RuntimeDirectory=tars-voice-whisper
+RuntimeDirectoryMode=0700
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=read-only
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+
+[Install]
+WantedBy=default.target

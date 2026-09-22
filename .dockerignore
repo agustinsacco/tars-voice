@@ -1,0 +1,13 @@
+.git
+.github
+.venv
+__pycache__
+*.py[cod]
+*.log
+*.wav
+*.webm
+models
+vendor
+.env
+.env.*
+!.env.example

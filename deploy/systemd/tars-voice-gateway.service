@@ -1,0 +1,22 @@
+[Unit]
+Description=Tars Voice Cloudflare Access-protected PWA gateway
+After=network.target tars-voice-whisper.service
+Requires=tars-voice-whisper.service
+
+[Service]
+Type=simple
+WorkingDirectory=%h/.local/share/tars-voice
+EnvironmentFile=%h/.config/tars-voice/voice.env
+Environment=PYTHONPATH=%h/.local/share/tars-voice
+ExecStart=/usr/bin/env %h/.local/share/tars-voice/.venv/bin/uvicorn gateway.app:app --host 127.0.0.1 --port 8788 --proxy-headers --forwarded-allow-ips=127.0.0.1 --no-access-log --log-level warning
+Restart=on-failure
+RestartSec=3
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=read-only
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+UMask=0077
+
+[Install]
+WantedBy=default.target
