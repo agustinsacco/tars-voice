@@ -10,3 +10,4 @@
 - [Operations](runbook.md) — health checks, updates, and rollback
 - [Validation](validation.md) — automated and live acceptance requirements
 - [Reference review](review.md) — implementation status and measured performance
+- [Voice LLM](voice-llm.md) — local voice-agent model and benchmark

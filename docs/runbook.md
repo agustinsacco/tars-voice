@@ -3,8 +3,8 @@
 ## Status
 
 ```bash
-systemctl --user status tars-voice-whisper tars-voice-gateway
-ss -ltnp | grep -E ':(8788|8789|8790)\b'
+systemctl --user status tars-voice-whisper tars-voice-gateway tars-voice-llm
+ss -ltnp | grep -E ':(8788|8789|8790|8791)\b'
 curl -fsS http://127.0.0.1:8788/healthz
 curl -fsS http://127.0.0.1:8788/readyz | python3 -m json.tool
 ```
@@ -14,6 +14,7 @@ Expected backend listeners are loopback-only:
 - gateway: 8788
 - Tars relay: 8789
 - Whisper: 8790
+- Voice LLM: 8791 (see [voice-llm.md](voice-llm.md))
 
 An unauthenticated request to the external hostname should receive a Cloudflare Access redirect rather than application content.
 
