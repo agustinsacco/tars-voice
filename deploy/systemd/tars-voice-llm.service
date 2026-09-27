@@ -1,0 +1,20 @@
+[Unit]
+Description=Tars Voice local voice-agent LLM (Qwen3.6-35B-A3B)
+After=network.target
+
+[Service]
+Type=simple
+WorkingDirectory=%h/.local/share/tars-voice
+Environment=AMD_VULKAN_ICD=RADV
+Environment=LD_LIBRARY_PATH=%h/.local/share/tars-voice/vendor/llama.cpp/build-vulkan/bin
+ExecStart=/usr/bin/env %h/.local/share/tars-voice/vendor/llama.cpp/build-vulkan/bin/llama-server --model %h/.local/share/tars-voice/models/llm/Qwen3.6-35B-A3B-UD-Q4_K_XL.gguf --alias tars-voice --host 127.0.0.1 --port 8791 --ctx-size 32768 --parallel 2 --n-gpu-layers 999 --flash-attn on --cache-type-k q8_0 --cache-type-v q8_0 --jinja --no-webui
+Restart=on-failure
+RestartSec=5
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=read-only
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+
+[Install]
+WantedBy=default.target

@@ -17,7 +17,8 @@ for f in scripts/*.sh; do bash -n "$f"; done
 if command -v systemd-analyze >/dev/null 2>&1; then
   systemd-analyze verify --user \
     deploy/systemd/tars-voice-gateway.service \
-    deploy/systemd/tars-voice-whisper.service
+    deploy/systemd/tars-voice-whisper.service \
+    deploy/systemd/tars-voice-llm.service
 fi
 
 git diff --check
