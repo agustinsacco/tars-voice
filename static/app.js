@@ -60,7 +60,7 @@ function setCaption(element, text, style = '') {
 
 function connect() {
   clearTimeout(reconnectTimer);
-  ws = new WebSocket(`wss://${location.host}/ws`);
+  ws = new WebSocket(`${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}/ws`);
   ws.binaryType = 'arraybuffer';
   ws.onopen = () => {
     telemetry('websocket_open');

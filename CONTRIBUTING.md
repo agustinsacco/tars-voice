@@ -11,6 +11,8 @@ make validate
 
 Python 3.12+, Node.js 20+, and Bash are required. Tests do not download speech models.
 
+To try the whole app in a browser against a host's models, run `scripts/dev-local.sh --fake-tars`; see [local development](docs/development.md).
+
 ## Pull requests
 
 - Keep browser dependencies at zero unless there is a demonstrated need.
