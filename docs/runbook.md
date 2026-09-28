@@ -20,7 +20,7 @@ An unauthenticated request to the external hostname should receive a Cloudflare 
 
 ## Browser access
 
-Open the configured `VOICE_PUBLIC_ORIGIN`, complete Cloudflare Access authentication, and select **Start conversation**. There is no separate application pairing layer.
+Open the configured `VOICE_PUBLIC_ORIGIN`, complete Cloudflare Access authentication, and select **Talk to Tars** (or **or type** to start in quiet mode). During a call the three buttons are type, mute and end call; tap the slabs while Tars is speaking to stop it. There is no separate application pairing layer.
 
 ## Service control
 
