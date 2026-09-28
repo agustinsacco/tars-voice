@@ -75,6 +75,16 @@ class AppTests(unittest.TestCase):
             self.assertNotIn("transcript", serialized)
             self.assertNotIn("access-token", serialized)
 
+    def test_serves_only_shipped_static_files(self):
+        with TestClient(app, base_url="http://127.0.0.1") as client:
+            font = client.get("/fonts/space-grotesk-latin-wght-normal.woff2")
+            self.assertEqual((font.status_code, font.headers["content-type"]), (200, "font/woff2"))
+            self.assertEqual(client.get("/manifest.webmanifest").headers["content-type"], "application/manifest+json")
+            self.assertEqual(client.get("/tokens.css").status_code, 200)
+            for path in ("/nope.js", "/../gateway/app.py", "/%2e%2e/gateway/app.py", "/fonts/../../gateway/app.py"):
+                self.assertEqual(client.get(path).status_code, 404, path)
+            self.assertEqual(client.get("/healthz").json()["status"], "ok")
+
     def test_vad_rejects_silence_and_accepts_voiced_frames(self):
         self.assertFalse(has_speech(b"\0" * 32000))
         with patch("gateway.app.webrtcvad.Vad") as vad_type:
