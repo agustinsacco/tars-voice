@@ -32,6 +32,18 @@ def speakable_text(text: str) -> str:
     return " ".join(text.split())[:4000]
 
 
+def first_sentences(text: str, limit: int = 220) -> str:
+    """A short spoken version of a long answer: whole sentences up to `limit` characters."""
+    lines = [_MARKUP.sub("", re.sub(r"^\s*(?:[-*•]|\d+[.)])\s+", "", line)).strip() for line in text.splitlines()]
+    prose = " ".join(line if re.search(r"[.!?:]$", line) else f"{line}." for line in lines if line)
+    spoken = ""
+    for sentence in SentenceBuffer().push(speakable_text(prose) + "\n"):
+        if spoken and len(spoken) + len(sentence) > limit:
+            break
+        spoken = f"{spoken} {sentence}".strip()
+    return spoken[: limit + 80]
+
+
 def safe_status(event_type: str) -> str:
     return {
         "accepted": "Request accepted",

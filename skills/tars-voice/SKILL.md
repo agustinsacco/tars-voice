@@ -27,16 +27,17 @@ Canonical copy: `skills/tars-voice/` in the tars-voice repo (deployed at
 PWA → Cloudflare Access + Tunnel TLS → gateway 127.0.0.1:8788
                                       ├→ Whisper 127.0.0.1:8790
                                       ├→ persistent Piper
-                                      ├→ voice LLM 127.0.0.1:8791   (running, not wired in yet)
+                                      ├→ voice LLM 127.0.0.1:8791   (voice agent, when VOICE_AGENT_URL is set)
                                       └→ Tars relay 127.0.0.1:8789 → supervisor
 ```
 
 Tars owns reasoning, durable memory, tools, and confirmation policy. The gateway owns Access assertion verification, ephemeral audio, adaptive automatic turn detection, local interim/final Whisper STT, TTS sentence playback, local interruption, and one bounded follow-up. The PWA needs one initial browser gesture, then listens continuously until the owner ends the conversation.
 
-Planned direction (not live yet): a lightweight local voice agent answers
-conversational turns itself and hands tool/live-data/action requests to Tars
-asynchronously over the existing relay, then reports results back. Tars is
-unchanged by this.
+Voice agent: with `VOICE_AGENT_URL` set, the gateway sends each turn to the local
+voice model first. It answers conversational turns itself and queues anything
+needing tools, live data, personal data, or actions as a background request to
+Tars over the existing relay (one at a time, retried while Tars is busy). Results
+are spoken at the owner's next pause. Tars is unchanged by this.
 
 ## Voice LLM (owned by tars-voice)
 
@@ -46,7 +47,7 @@ skill). They are separate on purpose; tars-voice is accountable for its server.
 
 | Item | Value |
 |---|---|
-| Status | running permanently (`tars-voice-llm.service`, enabled); not wired into the gateway yet. Text prototype: `scripts/voice-agent-chat.py` |
+| Status | running permanently (`tars-voice-llm.service`, enabled); used by the gateway when `VOICE_AGENT_URL` is set. Text prototype: `scripts/voice-agent-chat.py` |
 | Binary | vendored llama.cpp Vulkan build in `vendor/llama.cpp/` (see its `VERSION`); independent of `~/LLM` rebuilds |
 | Port | `127.0.0.1:8791` (loopback only) |
 | Models | `~/.tars/apps/tars-voice/models/llm/*.gguf`, pinned and sha256-verified by `scripts/voice-llm-download.sh` |
@@ -94,7 +95,7 @@ All voice listeners must be bound to `127.0.0.1`. Without a Cloudflare Access se
 
 ```bash
 cd ~/.tars/apps/tars-voice
-PYTHONPATH=. .venv/bin/python -m unittest discover -s tests -v
+PYTHONPATH=. .venv/bin/python -m unittest discover -s tests -t . -v
 PYTHONPATH=. .venv/bin/python -m py_compile gateway/*.py
 node --check static/app.js
 node --check static/audio-worklet.js
