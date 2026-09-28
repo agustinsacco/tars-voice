@@ -46,7 +46,7 @@ skill). They are separate on purpose; tars-voice is accountable for its server.
 
 | Item | Value |
 |---|---|
-| Status | running permanently (`tars-voice-llm.service`, enabled); not wired into the gateway yet. |
+| Status | running permanently (`tars-voice-llm.service`, enabled); not wired into the gateway yet. Text prototype: `scripts/voice-agent-chat.py` |
 | Binary | vendored llama.cpp Vulkan build in `vendor/llama.cpp/` (see its `VERSION`); independent of `~/LLM` rebuilds |
 | Port | `127.0.0.1:8791` (loopback only) |
 | Models | `~/.tars/apps/tars-voice/models/llm/*.gguf`, pinned and sha256-verified by `scripts/voice-llm-download.sh` |
