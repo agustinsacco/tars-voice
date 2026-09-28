@@ -15,6 +15,7 @@ from pydantic import BaseModel, Field
 
 from .access import CloudflareAccessVerifier
 from .agent import DEFAULT_HANDOFF_SAY, AgentError, Decision, VoiceAgent
+from .discord import DiscordWebhook, format_call, task_poster
 from .handoff import HandoffQueue, Task
 from .observability import Diagnostics
 from .protocol import SentenceBuffer, first_sentences, safe_status, speakable_text
@@ -26,6 +27,7 @@ from .tts import PiperTTS
 STATIC = ROOT / "static"
 ACTIVE_CLIENT = asyncio.Lock()
 ACCESS_HEADER = "cf-access-jwt-assertion"
+BACKGROUND: set[asyncio.Task[None]] = set()  # detached jobs, such as a summary after a disconnect
 CLIENT_EVENTS = {
     "app_loaded",
     "websocket_open",
@@ -95,10 +97,13 @@ async def lifespan(app: FastAPI):
     app.state.tts = PiperTTS(settings.piper_model)
     app.state.handoffs = None
     app.state.agent_factory = None
+    app.state.discord = DiscordWebhook(settings.discord_webhook_url) if settings.discord_webhook_url else None
     if settings.agent_url:
         # Tars may run tools for minutes without sending a byte, so handoffs get a longer timeout.
         handoff_relay = HttpTarsRelay(settings.relay_url, settings.relay_token, timeout=settings.handoff_timeout)
         app.state.handoffs = HandoffQueue(handoff_relay)
+        if app.state.discord:
+            app.state.handoffs.subscribe(task_poster(app.state.discord, app.state.diagnostics.record))
         app.state.handoffs.start()
         app.state.agent_factory = lambda: VoiceAgent(settings.agent_url, settings.owner_name, settings.tars_home)
     started = time.monotonic()
@@ -219,6 +224,9 @@ class VoiceConnection:
         self.agent: VoiceAgent | None = factory() if factory and self.handoffs else None
         self.transcript: list[str] = []
         self.call_task: asyncio.Task[None] | None = None
+        self.call_started = time.time()
+        self.call_task_ids: list[int] = []
+        self.discord: DiscordWebhook | None = ws.app.state.discord
 
     async def send(self, payload: dict[str, Any]) -> None:
         if self.closed:
@@ -235,7 +243,12 @@ class VoiceConnection:
 
     async def receive(self) -> None:
         self.diag.record("websocket_connected", connectionId=self.log_id)
-        await self.send({"type": "ready", "mode": "single-session", "agent": self.agent is not None})
+        await self.send({
+            "type": "ready",
+            "mode": "single-session",
+            "agent": self.agent is not None,
+            "discordUrl": self.settings.discord_channel_url or None,
+        })
         if self.agent and self.handoffs:
             self.handoffs.subscribe(self.on_task)
             await self.send({"type": "tasks", "tasks": [task.public() for task in self.handoffs.recent()]})
@@ -260,6 +273,10 @@ class VoiceConnection:
             self.closed = True
             if self.handoffs:
                 self.handoffs.unsubscribe(self.on_task)
+            if self.transcript or self.call_task_ids:
+                job = asyncio.create_task(self.finish_call())  # the socket is gone; post the summary anyway
+                BACKGROUND.add(job)
+                job.add_done_callback(BACKGROUND.discard)
             self.diag.record("websocket_disconnected", connectionId=self.log_id)
             for task in (self.transcribe_task, self.partial_task, self.turn_task, self.call_task):
                 if task and not task.done():
@@ -300,6 +317,8 @@ class VoiceConnection:
             self.quiet = bool(message.get("on"))
         elif kind == "call_start":
             self.call_task = asyncio.create_task(self.start_call())
+        elif kind == "end_call":
+            await self.send({"type": "call_summary", **await self.finish_call()})
         elif kind == "ping":
             await self.send({"type": "pong"})
         else:
@@ -406,6 +425,8 @@ class VoiceConnection:
             return
         self.agent.start_call()
         self.transcript = []
+        self.call_task_ids = []
+        self.call_started = time.time()
         await self.agent.warm()
         self.maybe_announce()
 
@@ -446,6 +467,8 @@ class VoiceConnection:
                 decision = Decision("self", first_sentences(result.answer)) if result else Decision("tars", DEFAULT_HANDOFF_SAY, text)
             if decision.route == "tars" and result is None:
                 task = await self.handoffs.submit(decision.request)
+                if task.id not in self.call_task_ids:
+                    self.call_task_ids.append(task.id)
                 self.diag.record("handoff_submitted", connectionId=self.log_id, turnId=log_turn_id, taskId=task.id)
             if decision.say:
                 self.transcript.append(f"Tars: {decision.say}")
@@ -460,6 +483,26 @@ class VoiceConnection:
         finally:
             if not self.closed:
                 await self.send({"type": "done", "turnId": turn_id})
+
+    async def finish_call(self) -> dict[str, Any]:
+        """Summarize the call, post it to Discord, and start a fresh call record."""
+        transcript, task_ids = self.transcript, self.call_task_ids
+        minutes = max(1, round((time.time() - self.call_started) / 60))
+        self.transcript, self.call_task_ids, self.call_started = [], [], time.time()
+        tasks = [t for t in self.handoffs.tasks if t.id in task_ids] if self.handoffs else []
+        result: dict[str, Any] = {"minutes": minutes, "summary": "", "tasks": [t.public() for t in tasks], "posted": False}
+        if not transcript and not tasks:
+            return result
+        if self.agent:
+            lines = [f"{t.status}: {t.request} -> {t.answer[:300]}" for t in tasks]
+            try:
+                result["summary"] = await self.agent.summarize(transcript, lines)
+            except AgentError:
+                self.diag.record("summary_failed", level="warning", connectionId=self.log_id)
+        if self.discord:
+            result["posted"] = await self.discord.post(format_call(minutes, result["summary"], tasks))
+            self.diag.record("discord_posted" if result["posted"] else "discord_failed", level="info" if result["posted"] else "warning", kind="call")
+        return result
 
     async def run_relay_turn(self, text: str) -> None:
         turn_id = secrets.token_hex(12)

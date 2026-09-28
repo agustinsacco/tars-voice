@@ -18,6 +18,19 @@ All runtime configuration is supplied through environment variables.
 | `VOICE_OWNER_NAME` | no | Name the voice agent uses for the owner; defaults to `the owner` |
 | `VOICE_TARS_HOME` | no | Tars home read for context (read-only); defaults to `~/.tars` |
 | `VOICE_HANDOFF_TIMEOUT` | no | Seconds a background request may stay silent; defaults to 900 |
+| `VOICE_DISCORD_WEBHOOK_URL` | no | Secret Discord webhook for handoff results and call summaries |
+| `VOICE_DISCORD_CHANNEL_URL` | no | `https://discord.com/channels/...` link the app opens from the last call |
+
+## Discord channel
+
+Voice posts go to their own channel through a webhook, so tars-voice needs no bot token and Tars is untouched.
+
+1. In Discord, create a text channel (for example `#tars-voice`).
+2. Channel settings → Integrations → Webhooks → New Webhook → Copy Webhook URL.
+3. Put it in the gateway environment file as `VOICE_DISCORD_WEBHOOK_URL`. Optionally add the channel link (right-click the channel → Copy Link) as `VOICE_DISCORD_CHANNEL_URL`.
+4. Restart the gateway.
+
+Each finished background request is posted once with Tars' answer. When a call ends, one message lists the call length, a short summary, and the requests.
 
 ## Cloudflare assertion checks
 
