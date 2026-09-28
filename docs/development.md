@@ -5,6 +5,7 @@ host, so you can test the browser UI and the voice agent without deploying.
 
 ```bash
 make setup                        # once
+export VOICE_DEV_HOST=user@host   # SSH destination running the voice services
 scripts/dev-local.sh --fake-tars  # canned Tars answers; the real Tars is untouched
 scripts/dev-local.sh              # background requests go to the real Tars
 ```
@@ -43,7 +44,7 @@ you next message Tars on Discord. Use `--fake-tars` for UI work.
 
 | Variable | Default | Meaning |
 |---|---|---|
-| `VOICE_DEV_HOST` | `stark@stark` | SSH destination running the voice services |
+| `VOICE_DEV_HOST` | required | SSH destination running the voice services |
 | `VOICE_DEV_REMOTE_APP` | `.tars/apps/tars-voice` | App directory on the host, for the Piper voice |
 | `VOICE_DEV_PORT` | `18788` | Gateway port; the next three carry relay, Whisper, voice LLM |
 | `VOICE_DEV_FAKE_DELAY` | `5` | Seconds the fake Tars takes per answer |

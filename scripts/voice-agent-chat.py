@@ -6,7 +6,7 @@ routes to Tars. Handoffs join a queue that one worker relays to Tars (single-fli
 retried while Tars is busy); answers print when they arrive while you keep typing.
 Runs on the host so the relay token never leaves it. Standard library only.
 
-    ssh -t stark@stark ~/.tars/apps/tars-voice/scripts/voice-agent-chat.py
+    ssh -t <host> ~/.tars/apps/tars-voice/scripts/voice-agent-chat.py
 
 Commands: /tasks lists handoffs, /quit exits.
 """

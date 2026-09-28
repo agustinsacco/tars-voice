@@ -117,6 +117,7 @@ function handle(data) {
   if (data instanceof ArrayBuffer) {
     const turnId = audioTurn;
     audioTurn = null;
+    if (state.screen !== 'call') return; // never talk outside a call
     if (turnId && !ignoredTurns.has(turnId)) io.enqueue(turnId, new Blob([data], {type: 'audio/wav'}));
     return;
   }
@@ -126,8 +127,12 @@ function handle(data) {
       state.online = true;
       state.closeCode = 0;
       view.setReady(true);
-      if (state.screen === 'call') send({type: 'quiet', on: state.typing});
-      else attemptAutoStart();
+      if (state.screen === 'call') {
+        send({type: 'call_start'}); // reconnected mid-call: the new connection is part of it
+        send({type: 'quiet', on: state.typing});
+      } else {
+        attemptAutoStart();
+      }
       break;
     case 'partial_transcript':
       if (io.capturing) view.interim(event.text);
