@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512">
+<defs>
+<linearGradient id="s" x1="0" x2="1" y1="0" y2="0"><stop offset="0" stop-color="#8f8f98"/><stop offset=".3" stop-color="#e4e4e7"/><stop offset=".55" stop-color="#fafafa"/><stop offset="1" stop-color="#b4b4bb"/></linearGradient>
+<radialGradient id="glow" cx=".5" cy=".52" r=".5"><stop offset="0" stop-color="#f97316" stop-opacity=".22"/><stop offset=".45" stop-color="#f97316" stop-opacity=".06"/><stop offset="1" stop-color="#f97316" stop-opacity="0"/></radialGradient>
+<filter id="g" x="-200%" y="-100%" width="500%" height="300%"><feGaussianBlur stdDeviation="3" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
+</defs>
+<rect width="512" height="512" fill="#050505"/>
+<rect width="512" height="512" fill="url(#glow)"/>
+<rect x="127.0" y="146.0" width="54" height="232" rx="14" fill="url(#s)"/><rect x="135.6" y="173.8" width="36.7" height="18.6" rx="3" fill="#18181b"/><rect x="150.0" y="262.0" width="8" height="25.5" rx="3" fill="#fb923c" filter="url(#g)"/><rect x="195.0" y="146.0" width="54" height="232" rx="14" fill="url(#s)"/><rect x="203.6" y="173.8" width="36.7" height="18.6" rx="3" fill="#18181b"/><rect x="218.0" y="262.0" width="8" height="25.5" rx="3" fill="#fb923c" filter="url(#g)"/><rect x="263.0" y="146.0" width="54" height="232" rx="14" fill="url(#s)"/><rect x="271.6" y="173.8" width="36.7" height="18.6" rx="3" fill="#18181b"/><rect x="286.0" y="262.0" width="8" height="25.5" rx="3" fill="#fb923c" filter="url(#g)"/><rect x="331.0" y="146.0" width="54" height="232" rx="14" fill="url(#s)"/><rect x="339.6" y="173.8" width="36.7" height="18.6" rx="3" fill="#18181b"/><rect x="354.0" y="262.0" width="8" height="25.5" rx="3" fill="#fb923c" filter="url(#g)"/>
+</svg>

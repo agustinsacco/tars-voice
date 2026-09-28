@@ -90,3 +90,5 @@ See [`SECURITY.md`](SECURITY.md) and [`docs/security.md`](docs/security.md).
 ## License
 
 MIT — see [`LICENSE`](LICENSE).
+
+The bundled JetBrains Mono and Space Grotesk fonts are under the SIL Open Font License 1.1; see [`static/fonts/`](static/fonts/).

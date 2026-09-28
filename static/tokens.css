@@ -1,0 +1,71 @@
+/* Tars Voice design tokens, matched to tars.saccolabs.com. */
+
+@font-face {
+  font-family: "JetBrains Mono Variable";
+  font-style: normal;
+  font-display: swap;
+  font-weight: 100 800;
+  src: url("/fonts/jetbrains-mono-latin-wght-normal.woff2") format("woff2-variations");
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+
+@font-face {
+  font-family: "Space Grotesk Variable";
+  font-style: normal;
+  font-display: swap;
+  font-weight: 300 700;
+  src: url("/fonts/space-grotesk-latin-wght-normal.woff2") format("woff2-variations");
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+
+:root {
+  color-scheme: dark;
+
+  /* Surfaces and lines */
+  --bg: #050505;
+  --raised: #0c0c0e;
+  --line: #1f1f23;
+  --line-2: #27272a;
+  --line-3: #3f3f46;
+
+  /* Text, lightest to quietest. --mute is the floor: 5.1:1 on --bg. */
+  --ink: #fafafa;
+  --ink-2: #e4e4e7;
+  --ink-3: #a1a1aa;
+  --ink-4: #8b8b95;
+  --mute: #7f7f89;
+
+  /* Tars orange: Tars is acting. */
+  --accent: #fb923c;
+  --accent-strong: #f97316;
+  --accent-dim: rgba(249, 115, 22, .08);
+  --accent-line: rgba(251, 146, 60, .28);
+  --on-accent: #09090b;
+
+  /* Problems only. */
+  --bad: #f87171;
+  --bad-fill: #dc2626;
+  --bad-dim: rgba(239, 68, 68, .06);
+  --bad-line: rgba(248, 113, 113, .3);
+
+  /* Monolith slabs */
+  --slab: linear-gradient(90deg, #8f8f98 0%, #e4e4e7 30%, #fafafa 55%, #b4b4bb 100%);
+  --slab-mid: linear-gradient(90deg, #4b4b52 0%, #7c7c86 45%, #5c5c64 100%);
+  --slab-dim: linear-gradient(90deg, #2e2e33 0%, #4a4a52 45%, #3a3a40 100%);
+  --light-off: #52525b;
+  --light-ember: #9a3412;
+
+  --font-mono: "JetBrains Mono Variable", "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+  --font-display: "Space Grotesk Variable", "Space Grotesk", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  --radius: 8px;
+}
+
+::selection {
+  color: var(--ink);
+  background: rgba(251, 146, 60, .3);
+}
+
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 3px;
+}
