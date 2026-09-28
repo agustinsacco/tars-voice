@@ -9,16 +9,24 @@ from tests.test_turns import FakeWebSocket
 
 
 class FakeAgent:
-    def __init__(self, decisions):
+    def __init__(self, decisions, summary="Checked Thursday's weather."):
         self.decisions = list(decisions)
         self.calls = []
         self.started = 0
+        self.summary = summary
+        self.summarized = []
 
     def start_call(self):
         self.started += 1
 
     async def warm(self):
         pass
+
+    async def summarize(self, transcript, tasks):
+        self.summarized.append((transcript, tasks))
+        if isinstance(self.summary, Exception):
+            raise self.summary
+        return self.summary
 
     async def decide(self, text, ledger, *, note=False, now=None):
         self.calls.append((text, note, ledger))

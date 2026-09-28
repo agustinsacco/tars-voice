@@ -25,6 +25,8 @@ class Settings:
     owner_name: str = os.getenv("VOICE_OWNER_NAME", "the owner")
     tars_home: Path = Path(os.getenv("VOICE_TARS_HOME", str(Path.home() / ".tars")))
     handoff_timeout: int = int(os.getenv("VOICE_HANDOFF_TIMEOUT", "900"))
+    discord_webhook_url: str = os.getenv("VOICE_DISCORD_WEBHOOK_URL", "")
+    discord_channel_url: str = os.getenv("VOICE_DISCORD_CHANNEL_URL", "")
 
     @property
     def public_host(self) -> str:
@@ -50,3 +52,8 @@ class Settings:
             raise RuntimeError("Piper model is missing")
         if self.agent_url and urlparse(self.agent_url).hostname not in {"127.0.0.1", "localhost", "::1"}:
             raise RuntimeError("VOICE_AGENT_URL must be a loopback URL")
+        webhook_prefixes = ("https://discord.com/api/webhooks/", "https://discordapp.com/api/webhooks/")
+        if self.discord_webhook_url and not self.discord_webhook_url.startswith(webhook_prefixes):
+            raise RuntimeError("VOICE_DISCORD_WEBHOOK_URL must be a Discord webhook URL")
+        if self.discord_channel_url and not self.discord_channel_url.startswith("https://discord.com/channels/"):
+            raise RuntimeError("VOICE_DISCORD_CHANNEL_URL must be a Discord channel link")
