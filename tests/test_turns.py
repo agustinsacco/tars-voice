@@ -14,7 +14,7 @@ class NoopDiagnostics:
 
 class FakeWebSocket:
     def __init__(self):
-        settings = SimpleNamespace(max_audio_seconds=30, owner_name="Sam")
+        settings = SimpleNamespace(max_audio_seconds=30, owner_name="Sam", discord_channel_url="")
         self.app = SimpleNamespace(
             state=SimpleNamespace(
                 settings=settings,
@@ -24,6 +24,7 @@ class FakeWebSocket:
                 diagnostics=NoopDiagnostics(),
                 handoffs=None,
                 agent_factory=None,
+                discord=None,
             )
         )
         self.events = []

@@ -15,6 +15,7 @@ JSON control frames:
 {"type":"interrupt"}
 {"type":"quiet","on":true}
 {"type":"call_start"}
+{"type":"end_call"}
 {"type":"ping"}
 ```
 
@@ -24,15 +25,17 @@ Between `speech_start` and `speech_end`, binary frames contain 16 kHz, mono, sig
 - `interrupt` stops the rest of the current spoken reply (tap to stop).
 - `quiet` turns speech synthesis off or on; replies still arrive as text.
 - `call_start` starts a fresh voice-agent conversation and prefills its prompt.
+- `end_call` summarizes the call, posts it to Discord when configured, and replies with `call_summary`. A call that ends by disconnecting is summarized and posted too.
 
 `speech_start` never drops an answer on its own, because noise can start a capture. The current reply is only interrupted by confirmed speech (a final transcript), `interrupt`, or the client stopping playback locally.
 
 ## Gateway to client
 
 ```text
-ready       connection accepted; `agent` is true when the voice agent is on
+ready       connection accepted; `agent` is true when the voice agent is on; `discordUrl` links the voice channel
 tasks       snapshot of recent background tasks
 task        one background task changed (queued, working, waiting, done, failed)
+call_summary        minutes, summary, the call's tasks, and whether it was posted to Discord
 listening   audio capture started
 status      sanitized progress label
 partial_transcript  evolving local transcript while the owner is speaking
