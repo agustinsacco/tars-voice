@@ -24,8 +24,8 @@ Between `speech_start` and `speech_end`, binary frames contain 16 kHz, mono, sig
 - `text_turn` sends typed text through the same path as speech.
 - `interrupt` stops the rest of the current spoken reply (tap to stop).
 - `quiet` turns speech synthesis off or on; replies still arrive as text.
-- `call_start` starts a fresh voice-agent conversation and prefills its prompt.
-- `end_call` summarizes the call, posts it to Discord when configured, and replies with `call_summary`. A call that ends by disconnecting is summarized and posted too.
+- `call_start` starts a fresh voice-agent conversation and prefills its prompt. The client sends it when a call starts and again after reconnecting mid-call. Background results are only announced between `call_start` and `end_call`; outside a call they stay in `task` events and Discord, and are announced at the next call.
+- `end_call` stops any reply still being spoken, summarizes the call, posts it to Discord when configured, and replies with `call_summary`. A call that ends by disconnecting is summarized and posted too.
 
 `speech_start` never drops an answer on its own, because noise can start a capture. The client likewise only pauses playback when a capture starts: it drops the rest of the reply on the capture's `transcript`, and resumes on its `error`. The current reply is only interrupted by confirmed speech (a final transcript), `interrupt`, or the client stopping playback locally.
 

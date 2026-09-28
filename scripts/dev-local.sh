@@ -12,14 +12,14 @@
 #
 # Then open http://127.0.0.1:18788 and allow the microphone. Ctrl-C stops everything.
 #
-# Environment: VOICE_DEV_HOST (default stark@stark), VOICE_DEV_REMOTE_APP (default
+# Environment: VOICE_DEV_HOST (required, e.g. user@host), VOICE_DEV_REMOTE_APP (default
 # .tars/apps/tars-voice), VOICE_DEV_PORT (default 18788; the next three ports carry
 # the relay, Whisper and the voice LLM), VOICE_DEV_FAKE_DELAY (seconds, default 5),
 # VOICE_OWNER_NAME, VOICE_DISCORD_WEBHOOK_URL (unset: nothing is posted).
 set -euo pipefail
 
 cd "$(dirname "$0")/.."
-HOST="${VOICE_DEV_HOST:-stark@stark}"
+HOST="${VOICE_DEV_HOST:?set VOICE_DEV_HOST to the SSH destination running the voice services, e.g. user@host}"
 REMOTE_APP="${VOICE_DEV_REMOTE_APP:-.tars/apps/tars-voice}"
 PORT="${VOICE_DEV_PORT:-18788}"
 RELAY_PORT=$((PORT + 1))

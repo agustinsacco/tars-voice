@@ -226,6 +226,7 @@ class VoiceConnection:
         self.capture_id = 0  # bumped on every capture; drops stale partial transcripts
         self.closed = False
         self.quiet = False
+        self.in_call = False  # results are only announced between call_start and end_call
         self.handoffs: HandoffQueue | None = ws.app.state.handoffs
         factory = ws.app.state.agent_factory
         self.agent: VoiceAgent | None = factory() if factory and self.handoffs else None
@@ -316,6 +317,9 @@ class VoiceConnection:
                 await self.send({"type": "error", "message": "Still transcribing the previous utterance."})
                 return
             self.transcribe_task = asyncio.create_task(self.transcribe(pcm))
+            # A capture that turns out to be noise starts no turn, so nothing else would
+            # announce a result that landed while it was recording.
+            self.transcribe_task.add_done_callback(lambda _: self.maybe_announce())
         elif kind == "text_turn" and isinstance(message.get("text"), str):
             await self.submit_text(" ".join(message["text"].split())[:8000])
         elif kind == "interrupt":
@@ -323,8 +327,11 @@ class VoiceConnection:
         elif kind == "quiet":
             self.quiet = bool(message.get("on"))
         elif kind == "call_start":
+            self.in_call = True
             self.call_task = asyncio.create_task(self.start_call())
         elif kind == "end_call":
+            self.in_call = False
+            self.generation += 1  # nothing more is spoken once the owner hangs up
             await self.send({"type": "call_summary", **await self.finish_call()})
         elif kind == "ping":
             await self.send({"type": "pong"})
@@ -340,6 +347,7 @@ class VoiceConnection:
             self.audio.clear()
             self.diag.record("capture_rejected", level="warning", connectionId=self.log_id, reason="audio_limit")
             await self.send({"type": "error", "message": "The utterance was too long."})
+            self.maybe_announce()
             return
         self.audio.extend(frame)
         if (
@@ -446,7 +454,7 @@ class VoiceConnection:
     def maybe_announce(self) -> None:
         """Tell the owner about a finished background task at the next pause, never over them."""
         busy = (self.turn_task and not self.turn_task.done()) or (self.transcribe_task and not self.transcribe_task.done())
-        if self.closed or not self.agent or not self.handoffs or self.recording or busy:
+        if self.closed or not self.in_call or not self.agent or not self.handoffs or self.recording or busy:
             return
         task = next((t for t in self.handoffs.tasks if t.finished and not t.announced), None)
         if task is None:

@@ -57,6 +57,7 @@ def build(decisions, script=None):
     ws.app.state.agent_factory = lambda: agent
     ws.app.state.tts = FakeTTS()
     connection = VoiceConnection(ws)
+    connection.in_call = True  # as after call_start, without the prefill task
     queue.subscribe(connection.on_task)
     return ws, agent, queue, connection
 
@@ -162,6 +163,46 @@ class AgentTurnTests(unittest.TestCase):
             connection.maybe_announce()
             await until(lambda: len(agent.calls) == 2 and connection.turn_task is None)
             await queue.stop()
+
+        asyncio.run(run())
+
+    def test_result_that_lands_during_a_noise_capture_is_announced_after_it(self):
+        async def run():
+            _, agent, queue, connection = build([Decision("self", "Sunny.")], {"Weather": ["Sunny, high 20."]})
+            queue.start()
+            await connection.control({"type": "speech_start"})
+            await queue.submit("Weather")
+            await until(lambda: queue.tasks[0].finished)
+            self.assertEqual(agent.calls, [])  # not while the mic is capturing
+            await connection.control({"type": "speech_end"})  # no audio: rejected as noise
+            await until(lambda: len(agent.calls) == 1 and connection.turn_task is None, "result was never announced")
+            await queue.stop()
+            self.assertTrue(agent.calls[0][1])
+
+        asyncio.run(run())
+
+    def test_results_are_not_spoken_after_the_call_ends_but_wait_for_the_next_one(self):
+        async def run():
+            ws, agent, queue, connection = build([Decision("self", "Sunny.")], {"Weather": ["Sunny, high 20."]})
+            queue.start()
+            await queue.submit("Weather")
+            await connection.control({"type": "end_call"})
+            await until(lambda: queue.tasks[0].finished)
+            await asyncio.sleep(0.05)
+            self.assertEqual((agent.calls, queue.tasks[0].announced), ([], False))
+            self.assertNotIn("speakable", types(ws))
+            await connection.control({"type": "call_start"})
+            await until(lambda: len(agent.calls) == 1 and connection.turn_task is None, "not announced at the next call")
+            await queue.stop()
+            self.assertEqual([e["text"] for e in ws.events if e["type"] == "speakable"], ["Sunny."])
+
+        asyncio.run(run())
+
+    def test_ending_the_call_stops_a_reply_in_progress(self):
+        async def run():
+            _, _, _, connection = build([])
+            await connection.control({"type": "end_call"})
+            self.assertEqual((connection.in_call, connection.generation), (False, 1))
 
         asyncio.run(run())
 
