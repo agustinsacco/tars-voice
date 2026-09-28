@@ -12,13 +12,13 @@ test:
 	PYTHONPATH=. $(PYTHON) -m unittest discover -s tests -v
 
 check:
-	$(PYTHON) -m ruff check gateway tests
-	PYTHONPATH=. $(PYTHON) -m compileall -q gateway tests
+	$(PYTHON) -m ruff check gateway tests scripts
+	PYTHONPATH=. $(PYTHON) -m compileall -q gateway tests scripts
 	node --check static/app.js
 	node --check static/audio-worklet.js
 	node --check static/sw.js
 	$(PYTHON) -m json.tool static/manifest.webmanifest >/dev/null
-	bash -n scripts/validate.sh
+	for f in scripts/*.sh; do bash -n "$$f"; done
 	@if command -v systemd-analyze >/dev/null 2>&1; then systemd-analyze verify --user deploy/systemd/*.service; fi
 
 audit:

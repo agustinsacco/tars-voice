@@ -5,12 +5,13 @@ cd "$(dirname "${BASH_SOURCE[0]}")/.."
 PYTHON="${PYTHON:-.venv/bin/python}"
 
 PYTHONPATH=. "$PYTHON" -m unittest discover -s tests -v
-"$PYTHON" -m ruff check gateway tests
+"$PYTHON" -m ruff check gateway tests scripts
 "$PYTHON" -m pip_audit -r requirements.txt
-PYTHONPATH=. "$PYTHON" -m compileall -q gateway tests
+PYTHONPATH=. "$PYTHON" -m compileall -q gateway tests scripts
 node --check static/app.js
 node --check static/audio-worklet.js
 node --check static/sw.js
+for f in scripts/*.sh; do bash -n "$f"; done
 "$PYTHON" -m json.tool static/manifest.webmanifest >/dev/null
 
 if command -v systemd-analyze >/dev/null 2>&1; then
