@@ -14,6 +14,10 @@ All runtime configuration is supplied through environment variables.
 | `VOICE_WHISPER_URL` | no | whisper.cpp inference URL; defaults to `http://127.0.0.1:8790/inference` |
 | `VOICE_PIPER_MODEL` | yes | Absolute path to the Piper ONNX model |
 | `VOICE_MAX_AUDIO_SECONDS` | no | Maximum utterance length; defaults to 30 seconds |
+| `VOICE_AGENT_URL` | no | Loopback voice-model server, such as `http://127.0.0.1:8791`; turns on the voice agent |
+| `VOICE_OWNER_NAME` | no | Name the voice agent uses for the owner; defaults to `the owner` |
+| `VOICE_TARS_HOME` | no | Tars home read for context (read-only); defaults to `~/.tars` |
+| `VOICE_HANDOFF_TIMEOUT` | no | Seconds a background request may stay silent; defaults to 900 |
 
 ## Cloudflare assertion checks
 

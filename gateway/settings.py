@@ -21,6 +21,10 @@ class Settings:
     piper_model: Path = Path(os.getenv("VOICE_PIPER_MODEL", str(ROOT / "models/piper/en_US-lessac-medium.onnx")))
     max_audio_seconds: int = int(os.getenv("VOICE_MAX_AUDIO_SECONDS", "30"))
     additional_hosts: str = os.getenv("VOICE_ADDITIONAL_HOSTS", "")
+    agent_url: str = os.getenv("VOICE_AGENT_URL", "")
+    owner_name: str = os.getenv("VOICE_OWNER_NAME", "the owner")
+    tars_home: Path = Path(os.getenv("VOICE_TARS_HOME", str(Path.home() / ".tars")))
+    handoff_timeout: int = int(os.getenv("VOICE_HANDOFF_TIMEOUT", "900"))
 
     @property
     def public_host(self) -> str:
@@ -44,3 +48,5 @@ class Settings:
             raise RuntimeError("VOICE_PUBLIC_ORIGIN must be a complete HTTPS origin")
         if not self.piper_model.is_file():
             raise RuntimeError("Piper model is missing")
+        if self.agent_url and urlparse(self.agent_url).hostname not in {"127.0.0.1", "localhost", "::1"}:
+            raise RuntimeError("VOICE_AGENT_URL must be a loopback URL")

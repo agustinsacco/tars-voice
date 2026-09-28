@@ -14,7 +14,7 @@ class NoopDiagnostics:
 
 class FakeWebSocket:
     def __init__(self):
-        settings = SimpleNamespace(max_audio_seconds=30)
+        settings = SimpleNamespace(max_audio_seconds=30, owner_name="Sam")
         self.app = SimpleNamespace(
             state=SimpleNamespace(
                 settings=settings,
@@ -22,6 +22,8 @@ class FakeWebSocket:
                 stt=None,
                 tts=None,
                 diagnostics=NoopDiagnostics(),
+                handoffs=None,
+                agent_factory=None,
             )
         )
         self.events = []
@@ -45,7 +47,7 @@ class TurnTests(unittest.TestCase):
             connection = VoiceConnection(ws)
             connection.stt = FakeSTT()
             connection.recording = True
-            connection.generation = 1
+            connection.capture_id = 1
             pcm = b"\1\0" * 9600
             with patch("gateway.app.has_speech", return_value=True):
                 await connection.transcribe_partial(pcm, 1)
