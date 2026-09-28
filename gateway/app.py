@@ -179,15 +179,22 @@ async def index() -> FileResponse:
     return FileResponse(STATIC / "index.html")
 
 
-@app.get("/app.js")
-@app.get("/app.css")
-@app.get("/audio-worklet.js")
-@app.get("/manifest.webmanifest")
-@app.get("/sw.js")
-@app.get("/icon-192.png")
-@app.get("/icon-512.png")
-async def static_asset(request: Request):
-    return FileResponse(STATIC / request.url.path.removeprefix("/"))
+# Exactly the files shipped in static/, resolved once at startup; nothing else is served.
+STATIC_ASSETS = frozenset(
+    path.relative_to(STATIC).as_posix() for path in STATIC.rglob("*") if path.is_file() and path.name != "index.html"
+)
+MEDIA_TYPES = {".webmanifest": "application/manifest+json", ".woff2": "font/woff2", ".svg": "image/svg+xml"}
+
+
+def register_static_routes(target: FastAPI) -> None:
+    """Registered after every other route so it can't shadow one."""
+
+    @target.get("/{asset:path}")
+    async def static_asset(asset: str):
+        if asset not in STATIC_ASSETS:
+            return JSONResponse({"error": "not found"}, status_code=404)
+        path = STATIC / asset
+        return FileResponse(path, media_type=MEDIA_TYPES.get(path.suffix))
 
 
 def has_speech(pcm: bytes) -> bool:
@@ -583,3 +590,6 @@ async def voice_socket(ws: WebSocket) -> None:
     async with ACTIVE_CLIENT:
         await ws.accept()
         await VoiceConnection(ws).receive()
+
+
+register_static_routes(app)
