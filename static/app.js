@@ -1,35 +1,49 @@
-const $ = selector => document.querySelector(selector);
-const orb = $('#orb');
-const status = $('#status');
-const hint = $('#hint');
-const startButton = $('#start');
-const stopButton = $('#stop');
-const transcript = $('#transcript');
-const answer = $('#answer');
-const connection = $('.connection');
-const connectionLabel = $('#connection-label');
+import {VoiceIO} from '/audio.js';
+import * as view from '/view.js';
 
+const {el} = view;
+const NO_SPEECH = /no (clear )?speech/i;
+
+const state = {
+  screen: 'home',
+  online: false,
+  closeCode: 0,
+  muted: false,
+  typing: false,
+  thinking: false, // between the end of an utterance and its transcript
+  firstCall: !localStorage.getItem('tars_voice_seen'),
+};
+const busyTurns = new Set(); // turns started and not yet done
+const ignoredTurns = new Set(); // turns whose remaining audio the owner interrupted
 let ws;
-let wsReady = false;
 let reconnectTimer;
-let context;
-let source;
-let worklet;
-let stream;
-let conversationActive = false;
-let capturing = false;
-let captureStarted = 0;
-let voiceCandidateAt = 0;
-let lastVoice = 0;
-let preRoll = [];
-let smoothedLevel = 0;
-let noiseFloor = .004;
-let phase = 'idle';
-let pendingAudio = false;
-let audioQueue = [];
-let player = null;
-let playerUrl = null;
-let turnDone = true;
+let audioTurn = null; // the turn the next binary frame belongs to
+let holdTimer; // safety net: a hold never outlives its capture by more than 10 s
+
+const io = new VoiceIO({
+  level: value => view.setLevel(value),
+  speechStart(preRoll) {
+    // Noise can start a capture too, so replies are held, not dropped, until it is confirmed.
+    io.hold();
+    clearTimeout(holdTimer);
+    send({type: 'speech_start'});
+    if (preRoll) sendAudio(preRoll);
+    refresh();
+  },
+  frame: sendAudio,
+  speechEnd() {
+    holdTimer = setTimeout(releaseHold, 10000);
+    send({type: 'speech_end'});
+    state.thinking = true;
+    refresh();
+  },
+  playing: refresh,
+  blocked() {
+    telemetry('audio_playback_failed');
+    view.note('Sound is paused by the browser. Tap anywhere to hear Tars.');
+    document.addEventListener('pointerdown', () => io.unlock().then(() => io.playNext()), {once: true});
+  },
+});
 
 function telemetry(event, code = null) {
   fetch('/api/diagnostics/client', {
@@ -40,279 +54,234 @@ function telemetry(event, code = null) {
   }).catch(() => {});
 }
 
-function setConnection(online, label) {
-  connection.classList.toggle('online', online);
-  connectionLabel.textContent = label;
+function send(message) {
+  if (ws?.readyState === WebSocket.OPEN) ws.send(JSON.stringify(message));
 }
 
-function setMode(mode, label, detail) {
-  phase = mode;
-  orb.dataset.mode = mode;
-  status.textContent = label;
-  hint.textContent = detail;
+function sendAudio(buffer) {
+  if (ws?.readyState === WebSocket.OPEN) ws.send(buffer);
 }
 
-function setCaption(element, text, style = '') {
-  element.textContent = text;
-  element.classList.toggle('placeholder', style === 'placeholder');
-  element.classList.toggle('interim', style === 'interim');
+// One place decides what the monolith and status line show.
+function refresh() {
+  const inCall = state.screen === 'call';
+  io.enabled = inCall && state.online && !state.typing;
+  let mono = 'ready';
+  let word = 'Ready';
+  let tone = '';
+  let sub = '';
+  if (!state.online) {
+    [mono, word, tone] = inCall || state.closeCode ? ['error', 'Offline', 'bad'] : ['ready', 'Connecting', ''];
+    if (state.closeCode === 4429) sub = 'Tars Voice is open somewhere else';
+    else if (inCall) sub = 'Reconnecting…';
+  } else if (!inCall) {
+    [mono, word] = ['ready', 'Ready'];
+  } else if (io.playingTurn) {
+    [mono, word, tone, sub] = ['speaking', 'Speaking', 'acc', 'tap to stop'];
+  } else if (io.capturing) {
+    [mono, word, tone] = ['hearing', 'Listening', 'on'];
+  } else if (state.thinking || busyTurns.size) {
+    [mono, word, tone] = ['thinking', 'Thinking', 'acc'];
+  } else if (state.muted) {
+    [mono, word, sub] = ['muted', 'Muted', state.typing ? 'typing · replies stay quiet' : 'mic off'];
+  } else {
+    [mono, word, tone] = ['listening', 'Listening', 'on'];
+    if (state.firstCall) sub = 'Just talk. Pause when you’re done.';
+  }
+  view.setMonolith(mono);
+  view.setStatus(word, tone, sub);
 }
 
 function connect() {
   clearTimeout(reconnectTimer);
   ws = new WebSocket(`${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}/ws`);
   ws.binaryType = 'arraybuffer';
-  ws.onopen = () => {
-    telemetry('websocket_open');
-    setConnection(true, 'Secure');
-  };
+  ws.onopen = () => telemetry('websocket_open');
   ws.onclose = event => {
     telemetry('websocket_close', event.code);
-    wsReady = false;
-    startButton.disabled = true;
-    capturing = false;
-    setConnection(false, 'Reconnecting');
-    setMode('error', event.code === 4429 ? 'Already active elsewhere' : 'Connection interrupted', event.code === 4429 ? 'Close the other voice session to continue' : 'Reconnecting automatically…');
+    state.online = false;
+    state.closeCode = event.code;
+    state.thinking = false;
+    busyTurns.clear();
+    if (io.capturing) io.finish();
+    interruptPlayback(false);
+    view.setReady(false);
+    refresh();
     reconnectTimer = setTimeout(connect, event.code === 4429 ? 4000 : 1600);
   };
-  ws.onerror = () => {
-    telemetry('websocket_error');
-    setConnection(false, 'Offline');
-  };
-  ws.onmessage = event => handleMessage(event.data);
+  ws.onerror = () => telemetry('websocket_error');
+  ws.onmessage = event => handle(event.data);
 }
 
-async function handleMessage(data) {
+function handle(data) {
   if (data instanceof ArrayBuffer) {
-    if (!pendingAudio) return;
-    pendingAudio = false;
-    audioQueue.push(new Blob([data], {type: 'audio/wav'}));
-    playNext();
+    const turnId = audioTurn;
+    audioTurn = null;
+    if (turnId && !ignoredTurns.has(turnId)) io.enqueue(turnId, new Blob([data], {type: 'audio/wav'}));
     return;
   }
-
   const event = JSON.parse(data);
-  if (event.type === 'ready') {
-    wsReady = true;
-    startButton.disabled = false;
-    setConnection(true, 'Secure');
-    if (conversationActive) {
-      setMode('listening', 'Listening', 'Speak naturally — no button needed');
-    } else {
-      setMode('idle', 'Ready when you are', 'One tap starts a continuous conversation');
-      attemptAutoStart();
-    }
-  } else if (event.type === 'listening') {
-    setMode('listening', 'Listening', 'I’ll respond when you pause');
-  } else if (event.type === 'partial_transcript') {
-    if (capturing) setCaption(transcript, event.text, 'interim');
-  } else if (event.type === 'status') {
-    if (!capturing) setMode('thinking', event.safeLabel || 'Thinking', 'You can interrupt at any time');
-  } else if (event.type === 'transcript') {
-    setCaption(transcript, event.text);
-    setCaption(answer, 'Thinking…', 'interim');
-    turnDone = false;
-    setMode('thinking', 'Thinking', 'You can keep speaking to add a follow-up');
-  } else if (event.type === 'answer') {
-    if (answer.classList.contains('interim') || answer.classList.contains('placeholder')) setCaption(answer, '');
-    answer.textContent += event.text;
-  } else if (event.type === 'audio') {
-    pendingAudio = true;
-  } else if (event.type === 'queued') {
-    setMode('thinking', 'Follow-up heard', 'Finishing the current response first');
-  } else if (event.type === 'done') {
-    turnDone = true;
-    if (!player && !audioQueue.length && !capturing) returnToListening();
-  } else if (event.type === 'error') {
-    setMode('error', event.message || 'Something went wrong', 'Listening will resume automatically');
-    setTimeout(() => {
-      if (conversationActive && !capturing) returnToListening();
-    }, 1200);
+  switch (event.type) {
+    case 'ready':
+      state.online = true;
+      state.closeCode = 0;
+      view.setReady(true);
+      if (state.screen === 'call') send({type: 'quiet', on: state.typing});
+      else attemptAutoStart();
+      break;
+    case 'partial_transcript':
+      if (io.capturing) view.interim(event.text);
+      break;
+    case 'transcript':
+      state.thinking = false;
+      if (io.holding) interruptPlayback(false); // confirmed speech: the held reply is dropped
+      if (io.capturing) io.hold(); // already talking again
+      view.finalizeInterim(event.text);
+      markSeen();
+      break;
+    case 'status':
+      if (event.turnId) busyTurns.add(event.turnId);
+      break;
+    case 'answer':
+      if (event.turnId) busyTurns.add(event.turnId);
+      view.tars(event.turnId, event.text);
+      break;
+    case 'audio':
+      audioTurn = event.turnId;
+      break;
+    case 'done':
+      busyTurns.delete(event.turnId);
+      break;
+    case 'error':
+      state.thinking = false;
+      if (!event.turnId) releaseHold(); // the capture was noise or failed; carry on
+      if (event.turnId) busyTurns.delete(event.turnId);
+      if (NO_SPEECH.test(event.message || '')) view.dropInterim();
+      else view.note(event.message || 'Something went wrong.');
+      break;
   }
+  refresh();
 }
 
-async function ensureMic() {
-  if (context) return;
-  stream = await navigator.mediaDevices.getUserMedia({
-    audio: {
-      channelCount: 1,
-      echoCancellation: true,
-      noiseSuppression: true,
-      autoGainControl: true,
-    },
-  });
-  context = new AudioContext({latencyHint: 'interactive'});
-  await context.audioWorklet.addModule('/audio-worklet.js');
-  source = context.createMediaStreamSource(stream);
-  worklet = new AudioWorkletNode(context, 'tars-capture');
-  source.connect(worklet);
-  const silent = context.createGain();
-  silent.gain.value = 0;
-  worklet.connect(silent).connect(context.destination);
-  worklet.port.onmessage = ({data}) => audioFrame(data);
-  telemetry('microphone_ready');
+function markSeen() {
+  if (!state.firstCall) return;
+  state.firstCall = false;
+  localStorage.setItem('tars_voice_seen', '1');
 }
 
-async function startConversation(userInitiated = true) {
-  if (!wsReady) return;
+function interruptPlayback(tellServer) {
+  const turnId = io.stopPlayback();
+  if (turnId) ignoredTurns.add(turnId);
+  clearTimeout(holdTimer);
+  if (tellServer) send({type: 'interrupt'});
+}
+
+function releaseHold() {
+  clearTimeout(holdTimer);
+  if (!io.capturing) io.release();
+}
+
+async function startCall({typing = false} = {}) {
+  if (!state.online) return;
+  view.clearTimeline();
+  busyTurns.clear();
+  ignoredTurns.clear();
+  state.screen = 'call';
+  view.showScreen('call');
+  await io.unlock().catch(() => {});
+  send({type: 'call_start'});
+  if (typing) {
+    setTyping(true);
+  } else {
+    await useMic();
+  }
+  telemetry('handsfree_enabled');
+  refresh();
+}
+
+async function useMic() {
   try {
-    await ensureMic();
-    await context.resume();
-    if (context.state !== 'running') throw new Error('Audio context is suspended');
-    conversationActive = true;
+    await io.startMic();
+    telemetry('microphone_ready');
     localStorage.setItem('tars_voice_autostart', '1');
-    startButton.classList.add('hidden');
-    stopButton.classList.remove('hidden');
-    setCaption(transcript, 'Listening…', 'interim');
-    setMode('listening', 'Listening', 'Speak naturally — no button needed');
-    if (userInitiated) telemetry('handsfree_enabled');
+    return true;
   } catch {
-    conversationActive = false;
-    startButton.classList.remove('hidden');
-    stopButton.classList.add('hidden');
     telemetry('microphone_denied');
-    setMode('error', 'Microphone access needed', 'Allow microphone access, then tap Start conversation');
+    view.note('The microphone is blocked. Allow it in your browser’s site settings, or type instead.');
+    setTyping(true);
+    return false;
   }
 }
 
+function setTyping(typing) {
+  state.typing = typing;
+  setMuted(typing);
+  if (typing) interruptPlayback(true);
+  send({type: 'quiet', on: typing});
+  view.setTyping(typing);
+  refresh();
+}
+
+function setMuted(muted) {
+  state.muted = muted;
+  io.setMuted(muted);
+  view.setMuted(muted);
+  refresh();
+}
+
+function endCall() {
+  send({type: 'end_call'});
+  interruptPlayback(false);
+  io.stopMic();
+  localStorage.removeItem('tars_voice_autostart');
+  state.screen = 'home';
+  state.thinking = false;
+  if (state.typing) setTyping(false);
+  setMuted(false);
+  view.showScreen('home');
+  telemetry('handsfree_disabled');
+  refresh();
+}
+
+// Reopening the app during a call picks the call back up, if the mic is already allowed.
 async function attemptAutoStart() {
   if (localStorage.getItem('tars_voice_autostart') !== '1' || !navigator.permissions?.query) return;
   try {
     const permission = await navigator.permissions.query({name: 'microphone'});
-    if (permission.state === 'granted') await startConversation(false);
+    if (permission.state === 'granted') await startCall();
   } catch {
-    // Permission introspection is not supported by every mobile browser.
+    // Not every mobile browser supports permission queries.
   }
 }
 
-function audioFrame({pcm, rms}) {
-  const now = performance.now();
-  smoothedLevel = smoothedLevel * .76 + rms * .24;
-  orb.style.setProperty('--level', String(Math.min(1, smoothedLevel * 16)));
+el.talk.addEventListener('click', () => startCall());
+el.typeFirst.addEventListener('click', () => startCall({typing: true}));
+el.type.addEventListener('click', () => setTyping(true));
+el.mute.addEventListener('click', () => setMuted(!state.muted));
+el.end.addEventListener('click', endCall);
+el.monolith.addEventListener('click', () => {
+  if (io.playingTurn) interruptPlayback(true);
+});
+el.speak.addEventListener('click', async () => {
+  if (!io.micOn && !(await useMic())) return;
+  setTyping(false);
+});
+el.composer.addEventListener('submit', event => {
+  event.preventDefault();
+  const text = el.text.value.trim();
+  if (!text || !state.online) return;
+  el.text.value = '';
+  view.you(text);
+  markSeen();
+  send({type: 'text_turn', text});
+});
 
-  if (!capturing) {
-    preRoll.push(pcm);
-    while (preRoll.length > 150) preRoll.shift();
-  }
-  if (!conversationActive || !wsReady) return;
-
-  const canStart = phase === 'listening' || phase === 'thinking' || phase === 'speaking';
-  if (!canStart && !capturing) return;
-
-  if (!capturing && phase !== 'speaking' && smoothedLevel < .025) {
-    noiseFloor = noiseFloor * .995 + smoothedLevel * .005;
-  }
-  const ambientThreshold = Math.max(.012, Math.min(.04, noiseFloor * 2.8 + .006));
-  const threshold = phase === 'speaking' ? Math.max(.052, ambientThreshold * 1.8) : ambientThreshold;
-  const voiced = smoothedLevel > threshold;
-
-  if (!capturing) {
-    if (voiced) {
-      if (!voiceCandidateAt) voiceCandidateAt = now;
-      const onset = phase === 'speaking' ? 150 : 85;
-      if (now - voiceCandidateAt >= onset) startUtterance();
-    } else if (now - voiceCandidateAt > 110) {
-      voiceCandidateAt = 0;
-    }
-    return;
-  }
-
-  if (voiced) lastVoice = now;
-  if (ws.readyState === WebSocket.OPEN) ws.send(pcm);
-  if (now - lastVoice > 620 && now - captureStarted > 360) finishUtterance();
+// Keep the layout inside the visible area when the on-screen keyboard opens.
+if (window.visualViewport) {
+  const fit = () => el.app.style.setProperty('--app-h', `${window.visualViewport.height}px`);
+  window.visualViewport.addEventListener('resize', fit);
+  fit();
 }
-
-function startUtterance() {
-  if (capturing || ws?.readyState !== WebSocket.OPEN) return;
-  const wasSpeaking = phase === 'speaking';
-  const bufferedAudio = wasSpeaking ? preRoll.slice(-60) : preRoll;
-  stopPlayback();
-  capturing = true;
-  captureStarted = performance.now();
-  lastVoice = captureStarted;
-  voiceCandidateAt = 0;
-  turnDone = false;
-  setCaption(transcript, 'Listening…', 'interim');
-  setCaption(answer, '', '');
-  setMode('listening', 'Listening', 'Keep speaking — I’ll detect when you’re done');
-  ws.send(JSON.stringify({type: 'speech_start'}));
-  for (const chunk of bufferedAudio) ws.send(chunk);
-  preRoll = [];
-}
-
-function finishUtterance() {
-  if (!capturing) return;
-  capturing = false;
-  voiceCandidateAt = 0;
-  if (ws?.readyState === WebSocket.OPEN) ws.send(JSON.stringify({type: 'speech_end'}));
-  setMode('thinking', 'Understanding', 'Turning your speech into text');
-}
-
-function returnToListening() {
-  if (!conversationActive) return;
-  setMode('listening', 'Listening', 'Speak naturally — no button needed');
-}
-
-function stopPlayback() {
-  if (player) {
-    player.pause();
-    player = null;
-  }
-  if (playerUrl) {
-    URL.revokeObjectURL(playerUrl);
-    playerUrl = null;
-  }
-  audioQueue = [];
-  pendingAudio = false;
-}
-
-function playNext() {
-  if (player || !audioQueue.length) {
-    if (!player && !audioQueue.length && turnDone) returnToListening();
-    return;
-  }
-  const blob = audioQueue.shift();
-  playerUrl = URL.createObjectURL(blob);
-  player = new Audio(playerUrl);
-  setMode('speaking', 'Speaking', 'Just start talking to interrupt');
-  player.onended = () => {
-    URL.revokeObjectURL(playerUrl);
-    playerUrl = null;
-    player = null;
-    playNext();
-  };
-  player.onerror = player.onended;
-  player.play().catch(() => {
-    telemetry('audio_playback_failed');
-    player = null;
-    setMode('error', 'Tap Start to enable audio', 'Your browser paused automatic playback');
-    startButton.classList.remove('hidden');
-  });
-}
-
-async function endConversation() {
-  if (capturing) finishUtterance();
-  conversationActive = false;
-  localStorage.removeItem('tars_voice_autostart');
-  stopPlayback();
-  if (stream) stream.getTracks().forEach(track => track.stop());
-  if (context) await context.close().catch(() => {});
-  context = null;
-  source = null;
-  worklet = null;
-  stream = null;
-  preRoll = [];
-  orb.style.setProperty('--level', '0');
-  startButton.classList.remove('hidden');
-  stopButton.classList.add('hidden');
-  setCaption(transcript, 'Start speaking whenever you’re ready.', 'placeholder');
-  setCaption(answer, 'I’ll respond here and out loud.', 'placeholder');
-  setMode('idle', 'Conversation ended', 'Tap Start conversation whenever you want to resume');
-  telemetry('handsfree_disabled');
-}
-
-startButton.addEventListener('click', () => startConversation(true));
-stopButton.addEventListener('click', endConversation);
 
 telemetry('app_loaded');
 if ('serviceWorker' in navigator) {
@@ -320,4 +289,5 @@ if ('serviceWorker' in navigator) {
     .then(() => telemetry('service_worker_ready'))
     .catch(() => telemetry('service_worker_failed'));
 }
+refresh();
 connect();

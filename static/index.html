@@ -2,56 +2,64 @@
 <html lang="en">
 <head>
   <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,interactive-widget=resizes-content">
   <meta name="theme-color" content="#050505">
-  <meta name="description" content="Private Access-protected voice interface for Tars">
+  <meta name="description" content="Talk to Tars by voice">
   <link rel="manifest" href="/manifest.webmanifest">
   <link rel="icon" href="/icon.svg" type="image/svg+xml">
   <link rel="apple-touch-icon" href="/icon-192.png">
+  <link rel="preload" href="/fonts/space-grotesk-latin-wght-normal.woff2" as="font" type="font/woff2" crossorigin>
   <link rel="stylesheet" href="/tokens.css">
   <link rel="stylesheet" href="/app.css">
   <title>Tars Voice</title>
 </head>
 <body>
-  <main class="voice-shell">
-    <header class="topbar">
-      <div class="brand"><span class="brand-mark">T</span><span>Tars</span></div>
-      <div class="connection"><span id="connection-dot"></span><span id="connection-label">Connecting</span></div>
+  <main class="app" data-screen="home">
+    <div class="backdrop" aria-hidden="true"><div class="grid"></div><div class="glow"></div></div>
+
+    <header class="top">
+      <div class="wordmark"><span class="mono mono-logo" aria-hidden="true"><i></i><i></i><i></i><i></i></span><span>TARS</span></div>
     </header>
 
-    <section class="voice-stage" aria-label="Voice conversation">
-      <div id="orb" class="orb" data-mode="idle" aria-hidden="true">
-        <div class="orb-halo"></div>
-        <div class="orb-ring ring-one"></div>
-        <div class="orb-ring ring-two"></div>
-        <div class="orb-core"></div>
-      </div>
+    <section class="stage">
+      <button id="monolith" class="mono" data-s="ready" type="button" aria-hidden="true" tabindex="-1" aria-label="Stop speaking"><i></i><i></i><i></i><i></i></button>
+      <p id="status" class="status" role="status" aria-live="polite">Connecting</p>
+      <p id="sub" class="sub"></p>
+    </section>
 
-      <div class="voice-state" aria-live="polite">
-        <h1 id="status">Connecting…</h1>
-        <p id="hint">Preparing your private voice session</p>
-      </div>
-
-      <button id="start" class="primary-action" type="button" disabled>
-        <span class="action-icon">◉</span>
-        <span>Start conversation</span>
+    <section class="home">
+      <button id="talk" class="cta" type="button" disabled>
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><path d="M12 19v3"/></svg>
+        Talk to Tars
       </button>
-      <button id="stop" class="secondary-action hidden" type="button">End conversation</button>
+      <button id="type-first" class="link" type="button" disabled>or type</button>
     </section>
 
-    <section id="captions" class="captions" aria-live="polite">
-      <div class="caption-block user-caption">
-        <span>You</span>
-        <p id="transcript">Start speaking whenever you’re ready.</p>
-      </div>
-      <div class="caption-block assistant-caption">
-        <span>Tars</span>
-        <p id="answer">I’ll respond here and out loud.</p>
-      </div>
-    </section>
+    <section id="timeline" class="timeline" aria-live="polite" aria-label="Conversation"></section>
 
-    <footer>Private · local speech processing</footer>
+    <nav id="controls" class="controls" aria-label="Call controls">
+      <button id="type" class="round" type="button" aria-label="Type">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><rect width="20" height="16" x="2" y="4" rx="2"/><path d="M6 8h.01M10 8h.01M14 8h.01M18 8h.01M8 12h.01M12 12h.01M16 12h.01M7 16h10"/></svg>
+      </button>
+      <button id="mute" class="round mic" type="button" aria-label="Mute" aria-pressed="false">
+        <svg class="on" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><path d="M12 19v3"/></svg>
+        <svg class="off" viewBox="0 0 24 24" aria-hidden="true"><path d="m2 2 20 20"/><path d="M18.89 13.23A7.12 7.12 0 0 0 19 12v-2"/><path d="M5 10v2a7 7 0 0 0 12 5"/><path d="M15 9.34V5a3 3 0 0 0-5.68-1.33"/><path d="M9 9v3a3 3 0 0 0 5.12 2.12"/><path d="M12 19v3"/></svg>
+      </button>
+      <button id="end" class="round end" type="button" aria-label="End call">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M10.1 13.9a14 14 0 0 0 3.73 2.67 1 1 0 0 0 1.21-.3l.36-.47A2 2 0 0 1 17 15h3a2 2 0 0 1 2 2v3a2 2 0 0 1-2 2A18 18 0 0 1 7.27 16.73"/><path d="M22 2 2 22"/><path d="M4.76 13.58A18 18 0 0 1 2 4a2 2 0 0 1 2-2h3a2 2 0 0 1 2 2v3a2 2 0 0 1-.8 1.6l-.47.35a1 1 0 0 0-.29 1.23l.24.47"/></svg>
+      </button>
+    </nav>
+
+    <form id="composer" class="composer" hidden>
+      <button id="speak" class="round small muted" type="button" aria-label="Back to voice">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m2 2 20 20"/><path d="M18.89 13.23A7.12 7.12 0 0 0 19 12v-2"/><path d="M5 10v2a7 7 0 0 0 12 5"/><path d="M15 9.34V5a3 3 0 0 0-5.68-1.33"/><path d="M9 9v3a3 3 0 0 0 5.12 2.12"/><path d="M12 19v3"/></svg>
+      </button>
+      <input id="text" type="text" autocomplete="off" enterkeyhint="send" maxlength="2000" placeholder="Message Tars" aria-label="Message Tars">
+      <button class="round small send" type="submit" aria-label="Send">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m5 12 7-7 7 7"/><path d="M12 19V5"/></svg>
+      </button>
+    </form>
   </main>
-  <script src="/app.js" defer></script>
+  <script type="module" src="/app.js"></script>
 </body>
 </html>
