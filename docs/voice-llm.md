@@ -4,8 +4,9 @@ tars-voice runs its own small local model as a fast voice agent. It answers
 conversational turns itself and hands tool, live-data, personal-data, and action
 requests to Tars asynchronously over the existing relay. Tars is unchanged and
 stays voice-agnostic. This document records how the model was chosen and how it
-runs. The PWA does not use it yet; `scripts/voice-agent-chat.py` is a text
-prototype of the flow.
+runs. The gateway uses it when `VOICE_AGENT_URL` is set (see
+[configuration](configuration.md)); `scripts/voice-agent-chat.py` is a text
+prototype of the same flow.
 
 ## Hosting
 

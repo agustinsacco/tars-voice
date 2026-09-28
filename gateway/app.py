@@ -14,8 +14,10 @@ from fastapi.responses import FileResponse, JSONResponse
 from pydantic import BaseModel, Field
 
 from .access import CloudflareAccessVerifier
+from .agent import DEFAULT_HANDOFF_SAY, AgentError, Decision, VoiceAgent
+from .handoff import HandoffQueue, Task
 from .observability import Diagnostics
-from .protocol import SentenceBuffer, safe_status, speakable_text
+from .protocol import SentenceBuffer, first_sentences, safe_status, speakable_text
 from .relay import HttpTarsRelay
 from .settings import ROOT, Settings
 from .stt import WhisperSTT
@@ -60,16 +62,19 @@ async def tcp_probe(url: str) -> bool:
 
 
 async def readiness(app: FastAPI) -> dict[str, Any]:
-    whisper_ok, relay_ok = await asyncio.gather(
-        tcp_probe(app.state.settings.whisper_url),
-        tcp_probe(app.state.settings.relay_url),
-    )
+    settings: Settings = app.state.settings
+    probes = [tcp_probe(settings.whisper_url), tcp_probe(settings.relay_url)]
+    if settings.agent_url:
+        probes.append(tcp_probe(settings.agent_url))
+    results = await asyncio.gather(*probes)
     components = {
         "gateway": True,
         "tts": app.state.tts.loaded,
-        "whisper": whisper_ok,
-        "relay": relay_ok,
+        "whisper": results[0],
+        "relay": results[1],
     }
+    if settings.agent_url:
+        components["agent"] = results[2]
     return {"ready": all(components.values()), "components": components, "activeClient": ACTIVE_CLIENT.locked()}
 
 
@@ -88,13 +93,23 @@ async def lifespan(app: FastAPI):
     app.state.relay = HttpTarsRelay(settings.relay_url, settings.relay_token)
     app.state.stt = WhisperSTT(settings.whisper_url)
     app.state.tts = PiperTTS(settings.piper_model)
+    app.state.handoffs = None
+    app.state.agent_factory = None
+    if settings.agent_url:
+        # Tars may run tools for minutes without sending a byte, so handoffs get a longer timeout.
+        handoff_relay = HttpTarsRelay(settings.relay_url, settings.relay_token, timeout=settings.handoff_timeout)
+        app.state.handoffs = HandoffQueue(handoff_relay)
+        app.state.handoffs.start()
+        app.state.agent_factory = lambda: VoiceAgent(settings.agent_url, settings.owner_name, settings.tars_home)
     started = time.monotonic()
     await app.state.tts.load()
     app.state.diagnostics.record("tts_loaded", latencyMs=round((time.monotonic() - started) * 1000))
-    app.state.diagnostics.record("gateway_ready")
+    app.state.diagnostics.record("gateway_ready", agent=bool(settings.agent_url))
     try:
         yield
     finally:
+        if app.state.handoffs:
+            await app.state.handoffs.stop()
         app.state.diagnostics.record("gateway_stopping")
 
 
@@ -195,8 +210,15 @@ class VoiceConnection:
         self.next_partial_bytes = 28_800  # first interim result after about 0.9 seconds
         self.turn_task: asyncio.Task[None] | None = None
         self.pending_text: str | None = None
-        self.generation = 0
+        self.generation = 0  # bumped on confirmed speech or a tap-to-stop; drops older audio
+        self.capture_id = 0  # bumped on every capture; drops stale partial transcripts
         self.closed = False
+        self.quiet = False
+        self.handoffs: HandoffQueue | None = ws.app.state.handoffs
+        factory = ws.app.state.agent_factory
+        self.agent: VoiceAgent | None = factory() if factory and self.handoffs else None
+        self.transcript: list[str] = []
+        self.call_task: asyncio.Task[None] | None = None
 
     async def send(self, payload: dict[str, Any]) -> None:
         if self.closed:
@@ -213,7 +235,11 @@ class VoiceConnection:
 
     async def receive(self) -> None:
         self.diag.record("websocket_connected", connectionId=self.log_id)
-        await self.send({"type": "ready", "mode": "single-session"})
+        await self.send({"type": "ready", "mode": "single-session", "agent": self.agent is not None})
+        if self.agent and self.handoffs:
+            self.handoffs.subscribe(self.on_task)
+            await self.send({"type": "tasks", "tasks": [task.public() for task in self.handoffs.recent()]})
+            self.call_task = asyncio.create_task(self.start_call())
         try:
             while True:
                 incoming = await self.ws.receive()
@@ -232,18 +258,21 @@ class VoiceConnection:
             pass
         finally:
             self.closed = True
+            if self.handoffs:
+                self.handoffs.unsubscribe(self.on_task)
             self.diag.record("websocket_disconnected", connectionId=self.log_id)
-            for task in (self.transcribe_task, self.partial_task, self.turn_task):
+            for task in (self.transcribe_task, self.partial_task, self.turn_task, self.call_task):
                 if task and not task.done():
                     task.cancel()
 
     async def control(self, message: dict[str, Any]) -> None:
         kind = message.get("type")
         if kind == "speech_start":
+            # Noise can start a capture too, so this must not drop the current answer.
             self.recording = True
             self.audio.clear()
             self.next_partial_bytes = 28_800
-            self.generation += 1
+            self.capture_id += 1
             self.diag.record("capture_started", connectionId=self.log_id)
             await self.send({"type": "listening"})
         elif kind == "speech_end":
@@ -265,6 +294,12 @@ class VoiceConnection:
             self.transcribe_task = asyncio.create_task(self.transcribe(pcm))
         elif kind == "text_turn" and isinstance(message.get("text"), str):
             await self.submit_text(" ".join(message["text"].split())[:8000])
+        elif kind == "interrupt":
+            self.generation += 1
+        elif kind == "quiet":
+            self.quiet = bool(message.get("on"))
+        elif kind == "call_start":
+            self.call_task = asyncio.create_task(self.start_call())
         elif kind == "ping":
             await self.send({"type": "pong"})
         else:
@@ -287,10 +322,10 @@ class VoiceConnection:
         ):
             self.next_partial_bytes = len(self.audio) + 38_400  # then about every 1.2 seconds
             self.partial_task = asyncio.create_task(
-                self.transcribe_partial(bytes(self.audio), self.generation)
+                self.transcribe_partial(bytes(self.audio), self.capture_id)
             )
 
-    async def transcribe_partial(self, pcm: bytes, generation: int) -> None:
+    async def transcribe_partial(self, pcm: bytes, capture_id: int) -> None:
         if len(pcm) < 19_200 or not has_speech(pcm):
             return
         started = time.monotonic()
@@ -298,7 +333,7 @@ class VoiceConnection:
             text = await self.stt.transcribe_pcm(pcm)
         except (ValueError, RuntimeError):
             return
-        if self.recording and generation == self.generation:
+        if self.recording and capture_id == self.capture_id:
             self.diag.record(
                 "stt_partial",
                 connectionId=self.log_id,
@@ -332,6 +367,7 @@ class VoiceConnection:
             await self.send({"type": "error", "message": "Speech recognition is unavailable."})
             return
         self.diag.record("stt_completed", connectionId=self.log_id, latencyMs=round((time.monotonic() - started) * 1000), characters=len(text))
+        self.generation += 1  # confirmed speech interrupts whatever was still being said
         await self.send({"type": "transcript", "text": text})
         await self.submit_text(text)
 
@@ -349,7 +385,83 @@ class VoiceConnection:
             return
         self.turn_task = asyncio.create_task(self.run_turn(text))
 
-    async def run_turn(self, text: str) -> None:
+    async def run_turn(self, text: str, result: Task | None = None) -> None:
+        try:
+            if self.agent and self.handoffs:
+                await self.run_agent_turn(text, result)
+            else:
+                await self.run_relay_turn(text)
+        finally:
+            current = asyncio.current_task()
+            if self.turn_task is current:
+                self.turn_task = None
+            pending, self.pending_text = self.pending_text, None
+            if pending and not self.closed:
+                self.turn_task = asyncio.create_task(self.run_turn(pending))
+            else:
+                self.maybe_announce()
+
+    async def start_call(self) -> None:
+        if not self.agent:
+            return
+        self.agent.start_call()
+        self.transcript = []
+        await self.agent.warm()
+        self.maybe_announce()
+
+    async def on_task(self, task: Task) -> None:
+        await self.send({"type": "task", "task": task.public()})
+        if task.finished:
+            self.diag.record("handoff_finished", connectionId=self.log_id, taskId=task.id, status=task.status, seconds=task.public()["seconds"])
+            self.maybe_announce()
+
+    def maybe_announce(self) -> None:
+        """Tell the owner about a finished background task at the next pause, never over them."""
+        busy = (self.turn_task and not self.turn_task.done()) or (self.transcribe_task and not self.transcribe_task.done())
+        if self.closed or not self.agent or not self.handoffs or self.recording or busy:
+            return
+        task = next((t for t in self.handoffs.tasks if t.finished and not t.announced), None)
+        if task is None:
+            return
+        task.announced = True
+        note = f"(Background task #{task.id} just finished. Tell {self.settings.owner_name} the result now.)"
+        self.turn_task = asyncio.create_task(self.run_turn(note, result=task))
+
+    async def run_agent_turn(self, text: str, result: Task | None) -> None:
+        assert self.agent and self.handoffs
+        turn_id = secrets.token_hex(12)
+        log_turn_id = turn_id[:8]
+        generation = self.generation
+        started = time.monotonic()
+        self.diag.record("turn_started", connectionId=self.log_id, turnId=log_turn_id, inputCharacters=len(text), kind="result" if result else "agent")
+        if result is None:
+            self.transcript.append(f"{self.settings.owner_name}: {text}")
+            await self.send({"type": "status", "turnId": turn_id, "safeLabel": "Thinking"})
+        try:
+            try:
+                decision = await self.agent.decide(text, self.handoffs.ledger(), note=result is not None)
+                self.diag.record("agent_decided", connectionId=self.log_id, turnId=log_turn_id, route=decision.route, latencyMs=round((time.monotonic() - started) * 1000))
+            except AgentError:
+                self.diag.record("agent_failed", level="warning", connectionId=self.log_id, turnId=log_turn_id)
+                decision = Decision("self", first_sentences(result.answer)) if result else Decision("tars", DEFAULT_HANDOFF_SAY, text)
+            if decision.route == "tars" and result is None:
+                task = await self.handoffs.submit(decision.request)
+                self.diag.record("handoff_submitted", connectionId=self.log_id, turnId=log_turn_id, taskId=task.id)
+            if decision.say:
+                self.transcript.append(f"Tars: {decision.say}")
+                await self.send({"type": "answer", "turnId": turn_id, "text": decision.say, "taskId": result.id if result else None})
+                sentences = SentenceBuffer()
+                for sentence in [*sentences.push(decision.say), sentences.flush()]:
+                    await self.speak(turn_id, generation, sentence)
+            self.diag.record("turn_completed", connectionId=self.log_id, turnId=log_turn_id, latencyMs=round((time.monotonic() - started) * 1000), answerCharacters=len(decision.say))
+        except asyncio.CancelledError:
+            self.diag.record("turn_cancelled", level="warning", connectionId=self.log_id, turnId=log_turn_id)
+            raise
+        finally:
+            if not self.closed:
+                await self.send({"type": "done", "turnId": turn_id})
+
+    async def run_relay_turn(self, text: str) -> None:
         turn_id = secrets.token_hex(12)
         log_turn_id = turn_id[:8]
         turn_generation = self.generation
@@ -390,16 +502,10 @@ class VoiceConnection:
         finally:
             if not completed and not self.closed:
                 await self.send({"type": "done", "turnId": turn_id})
-            current = asyncio.current_task()
-            if self.turn_task is current:
-                self.turn_task = None
-            pending, self.pending_text = self.pending_text, None
-            if pending and not self.closed:
-                self.turn_task = asyncio.create_task(self.run_turn(pending))
 
     async def speak(self, turn_id: str, generation: int, sentence: str) -> None:
         text = speakable_text(sentence)
-        if not text or generation != self.generation:
+        if not text or self.quiet or generation != self.generation:
             return
         started = time.monotonic()
         try:
