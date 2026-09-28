@@ -27,7 +27,7 @@ Between `speech_start` and `speech_end`, binary frames contain 16 kHz, mono, sig
 - `call_start` starts a fresh voice-agent conversation and prefills its prompt.
 - `end_call` summarizes the call, posts it to Discord when configured, and replies with `call_summary`. A call that ends by disconnecting is summarized and posted too.
 
-`speech_start` never drops an answer on its own, because noise can start a capture. The current reply is only interrupted by confirmed speech (a final transcript), `interrupt`, or the client stopping playback locally.
+`speech_start` never drops an answer on its own, because noise can start a capture. The client likewise only pauses playback when a capture starts: it drops the rest of the reply on the capture's `transcript`, and resumes on its `error`. The current reply is only interrupted by confirmed speech (a final transcript), `interrupt`, or the client stopping playback locally.
 
 ## Gateway to client
 
