@@ -64,6 +64,7 @@ Route-first JSON mode, ~2.8k-token prompt, two rounds:
 |---|---|---|---|---|---|---|
 | Qwen3.6-35B-A3B UD-Q4_K_XL | 38/38 | 0.16 s | 0.54 s | 1.0 s | 55 tok/s | 3.5 s / 11.0 s |
 | Qwen3-30B-A3B-Instruct-2507 UD-Q4_K_XL | 34/38 | 0.12 s | 0.42 s | 0.74 s | 75 tok/s | 3.1 s / 11.5 s |
+| Qwen3.6-35B-A3B UD-Q3_K_XL (2026-09-28) | 37/38 | 0.16 s | 0.55 s | 1.0 s | 59 tok/s | 3.1 s / 10.7 s |
 
 Findings:
 
@@ -79,6 +80,10 @@ Findings:
   a pending status meant. 2507 dispatched each of these to Tars.
 - The ~0.1 s first-sentence gap is small next to STT and TTS time. **Choice:
   Qwen3.6-35B-A3B UD-Q4_K_XL.**
+- The Q3_K_XL file is 5.5 GB smaller and slightly faster, but its judgement
+  slipped on the hardest cases: it dispatched an already-running task again in
+  one of two rounds, and once said "I have that noted" without a handoff. It is
+  only worth switching to if memory gets tight.
 
 ## Implementation notes
 

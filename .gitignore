@@ -19,6 +19,7 @@ models/
 *.webm
 
 # Runtime and secrets
+tmp/
 .env
 .env.*
 !.env.example
