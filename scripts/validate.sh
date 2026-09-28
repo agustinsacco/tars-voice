@@ -4,7 +4,7 @@ set -euo pipefail
 cd "$(dirname "${BASH_SOURCE[0]}")/.."
 PYTHON="${PYTHON:-.venv/bin/python}"
 
-PYTHONPATH=. "$PYTHON" -m unittest discover -s tests -v
+PYTHONPATH=. "$PYTHON" -m unittest discover -s tests -t . -v
 "$PYTHON" -m ruff check gateway tests scripts
 "$PYTHON" -m pip_audit -r requirements.txt
 PYTHONPATH=. "$PYTHON" -m compileall -q gateway tests scripts

@@ -9,7 +9,7 @@ setup:
 	$(PIP) install -r requirements-dev.txt
 
 test:
-	PYTHONPATH=. $(PYTHON) -m unittest discover -s tests -v
+	PYTHONPATH=. $(PYTHON) -m unittest discover -s tests -t . -v
 
 check:
 	$(PYTHON) -m ruff check gateway tests scripts
