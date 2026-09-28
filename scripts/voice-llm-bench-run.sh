@@ -28,7 +28,7 @@ systemctl --user stop tars-voice-llm-bench 2>/dev/null || true
 systemctl --user reset-failed tars-voice-llm-bench 2>/dev/null || true
 systemd-run --user --unit=tars-voice-llm-bench \
   --description="tars-voice: voice LLM benchmark (temporary)" \
-  --setenv=AMD_VULKAN_ICD=RADV \
+  --setenv=AMD_VULKAN_ICD=RADV --setenv=LD_LIBRARY_PATH="$(dirname "$bin")" \
   "$bin" --model "$model" --host 127.0.0.1 --port 8791 \
   --ctx-size 32768 --parallel 2 --n-gpu-layers 999 --flash-attn on \
   --cache-type-k q8_0 --cache-type-v q8_0 --jinja --no-webui
